@@ -1,5 +1,5 @@
-const CACHE_NAME = "pondashi-pad-v7";
-const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.json", "./assets/icon.svg"];
+const CACHE_NAME = "pondashi-pad-v8";
+const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./fade-fix.js", "./manifest.json", "./assets/icon.svg"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
