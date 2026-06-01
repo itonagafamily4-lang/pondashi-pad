@@ -1,0 +1,18 @@
+{
+  "name": "ポン出し Pad",
+  "short_name": "ポン出し",
+  "description": "スマホで音源をすぐ鳴らすためのサウンドパッド",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#171717",
+  "theme_color": "#171717",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
