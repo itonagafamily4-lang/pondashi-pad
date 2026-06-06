@@ -1,6 +1,8 @@
 const DB_NAME = "pondashi-pad-db";
 const DB_STORE = "audio-files";
-const PAD_COUNT = 12;
+const PADS_PER_PAGE = 12;
+const PAGE_COUNT = 5;
+const PAD_COUNT = PADS_PER_PAGE * PAGE_COUNT;
 const DEFAULT_COLORS = [
   "#4fb69f",
   "#f0b44f",
@@ -20,6 +22,8 @@ const padGrid = document.querySelector("#padGrid");
 const padTemplate = document.querySelector("#padTemplate");
 const statusText = document.querySelector("#statusText");
 const activeCount = document.querySelector("#activeCount");
+const pageSummary = document.querySelector("#pageSummary");
+const pageTabs = document.querySelector("#pageTabs");
 const stopAllButton = document.querySelector("#stopAllButton");
 const pauseAllButton = document.querySelector("#pauseAllButton");
 const pauseAllText = document.querySelector("#pauseAllText");
@@ -44,6 +48,7 @@ const resetButton = document.querySelector("#resetButton");
 
 let pads = [];
 let settings = { vibrate: true, keepAwake: false };
+let currentPage = 0;
 let editingPadId = null;
 let selectedColor = DEFAULT_COLORS[0];
 let pendingFile = null;
@@ -51,6 +56,7 @@ let wakeLock = null;
 const audioUrls = new Map();
 const activePlayers = new Map();
 const memoryBlobs = new Map();
+const fadeFrames = new WeakMap();
 
 window.addEventListener("error", (event) => {
   setStatus(`エラー: ${event.message || "画面を再読み込みしてください"}`);
@@ -128,19 +134,23 @@ function loadState() {
   try {
     const savedPads = localStorage.getItem("pondashi:pads");
     const savedSettings = localStorage.getItem("pondashi:settings");
+    const savedPage = localStorage.getItem("pondashi:page");
     pads = savedPads ? JSON.parse(savedPads) : createEmptyPads();
     settings = savedSettings ? { ...settings, ...JSON.parse(savedSettings) } : settings;
+    currentPage = savedPage ? Number(savedPage) : 0;
   } catch {
     pads = createEmptyPads();
   }
   if (!Array.isArray(pads) || pads.length === 0) pads = createEmptyPads();
-  pads = pads.map((pad, index) => ({ ...createPad(index), ...pad }));
+  pads = normalizePads(pads);
+  currentPage = clampPage(currentPage);
 }
 
 function saveState() {
   try {
     localStorage.setItem("pondashi:pads", JSON.stringify(pads));
     localStorage.setItem("pondashi:settings", JSON.stringify(settings));
+    localStorage.setItem("pondashi:page", String(currentPage));
   } catch {
     setStatus("この開き方では設定保存が制限されています");
   }
@@ -148,6 +158,14 @@ function saveState() {
 
 function createEmptyPads() {
   return Array.from({ length: PAD_COUNT }, (_, index) => createPad(index));
+}
+
+function normalizePads(savedPads) {
+  const normalized = [];
+  for (let index = 0; index < PAD_COUNT; index += 1) {
+    normalized.push({ ...createPad(index), ...(savedPads[index] || {}) });
+  }
+  return normalized;
 }
 
 function createPad(index) {
@@ -165,6 +183,23 @@ function createPad(index) {
 
 function padById(padId) {
   return pads.find((pad) => pad.id === padId);
+}
+
+function pageForPadIndex(index) {
+  return Math.floor(index / PADS_PER_PAGE);
+}
+
+function clampPage(page) {
+  if (!Number.isFinite(page)) return 0;
+  return Math.min(Math.max(Math.round(page), 0), PAGE_COUNT - 1);
+}
+
+function visiblePads() {
+  const start = currentPage * PADS_PER_PAGE;
+  return pads.slice(start, start + PADS_PER_PAGE).map((pad, offset) => ({
+    pad,
+    index: start + offset,
+  }));
 }
 
 function playersFor(padId) {
@@ -185,7 +220,7 @@ async function urlForPad(pad) {
 
 function renderPads() {
   padGrid.textContent = "";
-  pads.forEach((pad, index) => {
+  visiblePads().forEach(({ pad, index }) => {
     const node = padTemplate.content.firstElementChild.cloneNode(true);
     node.dataset.padId = pad.id;
     node.style.setProperty("--pad-color", pad.color);
@@ -197,7 +232,38 @@ function renderPads() {
     node.querySelector(".pad-menu").addEventListener("click", () => openPadDialog(pad.id));
     padGrid.append(node);
   });
+  renderPageTabs();
   updatePlaybackUi();
+}
+
+function renderPageTabs() {
+  if (pageSummary) {
+    const first = currentPage * PADS_PER_PAGE + 1;
+    const last = first + PADS_PER_PAGE - 1;
+    pageSummary.textContent = `Page ${currentPage + 1} / ${PAGE_COUNT} (${first}-${last})`;
+  }
+  if (!pageTabs) return;
+
+  pageTabs.textContent = "";
+  for (let page = 0; page < PAGE_COUNT; page += 1) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "page-tab";
+    button.textContent = String(page + 1);
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(page === currentPage));
+    button.addEventListener("click", () => setPage(page));
+    pageTabs.append(button);
+  }
+}
+
+function setPage(page) {
+  const nextPage = clampPage(page);
+  if (nextPage === currentPage) return;
+  currentPage = nextPage;
+  saveState();
+  renderPads();
+  setStatus(`ページ ${currentPage + 1} を表示`);
 }
 
 function renderSwatches() {
@@ -288,6 +354,7 @@ async function playPad(padId) {
   audio.preload = "auto";
   audio.loop = pad.mode === "loop";
   audio.volume = pad.volume;
+  audio.dataset.baseVolume = String(pad.volume);
   audio.dataset.startedAt = String(performance.now());
   playersFor(padId).add(audio);
   audio.addEventListener("ended", () => removePlayer(padId, audio));
@@ -306,6 +373,9 @@ async function playPad(padId) {
 }
 
 function removePlayer(padId, audio) {
+  const frame = fadeFrames.get(audio);
+  if (frame) cancelAnimationFrame(frame);
+  fadeFrames.delete(audio);
   const players = playersFor(padId);
   players.delete(audio);
   updatePlaybackUi();
@@ -314,6 +384,9 @@ function removePlayer(padId, audio) {
 function stopPad(padId) {
   const players = playersFor(padId);
   players.forEach((audio) => {
+    const frame = fadeFrames.get(audio);
+    if (frame) cancelAnimationFrame(frame);
+    fadeFrames.delete(audio);
     audio.pause();
     audio.currentTime = 0;
   });
@@ -346,32 +419,42 @@ async function pauseAll() {
 }
 
 function fadeAll() {
-  let count = 0;
+  const targets = [];
   activePlayers.forEach((players, padId) => {
-    players.forEach((audio) => {
-      count += 1;
-      fadeOut(audio, () => removePlayer(padId, audio));
-    });
+    players.forEach((audio) => targets.push({ audio, padId }));
   });
-  if (count > 0) setStatus("フェードアウト中");
+  if (!targets.length) {
+    setStatus("再生中の音源はありません");
+    return;
+  }
+  targets.forEach(({ audio, padId }) => fadeOut(audio, () => removePlayer(padId, audio)));
+  setStatus("フェードアウト中");
 }
 
 function fadeOut(audio, done) {
+  const previousFrame = fadeFrames.get(audio);
+  if (previousFrame) cancelAnimationFrame(previousFrame);
+
   const startVolume = audio.volume;
   const startedAt = performance.now();
-  const duration = 900;
+  const duration = 1200;
+  if (audio.paused) audio.play().catch(() => {});
+
   const tick = (now) => {
     const progress = Math.min(1, (now - startedAt) / duration);
-    audio.volume = startVolume * (1 - progress);
+    const eased = 1 - Math.pow(progress, 2);
+    audio.volume = Math.max(0, startVolume * eased);
     if (progress < 1) {
-      requestAnimationFrame(tick);
+      fadeFrames.set(audio, requestAnimationFrame(tick));
       return;
     }
+    fadeFrames.delete(audio);
     audio.pause();
     audio.currentTime = 0;
+    audio.volume = Number(audio.dataset.baseVolume || startVolume || 1);
     done();
   };
-  requestAnimationFrame(tick);
+  fadeFrames.set(audio, requestAnimationFrame(tick));
 }
 
 function allPlayers() {
@@ -427,14 +510,28 @@ async function importFiles(files) {
   const fileList = Array.prototype.slice.call(files).filter((file) => file.type && file.type.indexOf("audio/") === 0);
   if (!fileList.length) return;
 
+  let addedCount = 0;
+  let firstAddedIndex = -1;
   for (const file of fileList) {
-    const emptyPad = pads.find((pad) => !pad.blobKey) || createPad(pads.length);
-    if (!pads.includes(emptyPad)) pads.push(emptyPad);
+    const emptyIndex = pads.findIndex((pad) => !pad.blobKey);
+    if (emptyIndex < 0) break;
+    const emptyPad = pads[emptyIndex];
     await assignFile(emptyPad, file, fileList.length > 1);
+    if (firstAddedIndex < 0) firstAddedIndex = emptyIndex;
+    addedCount += 1;
   }
+  if (!addedCount) {
+    setStatus("空きPadがありません。最大60件まで登録できます");
+    return;
+  }
+  if (firstAddedIndex >= 0) currentPage = pageForPadIndex(firstAddedIndex);
   saveState();
   renderPads();
-  setStatus(`${fileList.length}件の音源を追加しました`);
+  setStatus(
+    addedCount === fileList.length
+      ? `${addedCount}件の音源を追加しました`
+      : `${addedCount}件を追加しました。最大60件までです`,
+  );
 }
 
 async function assignFile(pad, file, renamePad = false) {
@@ -478,7 +575,8 @@ async function clearPad(padId) {
   if (!pad) return;
   stopPad(padId);
   if (pad.blobKey) await deleteBlob(pad.blobKey);
-  pad.name = `Pad ${pads.indexOf(pad) + 1}`;
+  const padNumber = pads.indexOf(pad) + 1;
+  pad.name = `Pad ${padNumber}`;
   pad.fileName = "";
   pad.blobKey = "";
   pad.dataUrl = "";
@@ -495,6 +593,7 @@ async function resetAll() {
   audioUrls.forEach((url) => URL.revokeObjectURL(url));
   audioUrls.clear();
   pads = createEmptyPads();
+  currentPage = 0;
   saveState();
   renderPads();
   setStatus("全パッドを削除しました");
