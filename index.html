@@ -63,6 +63,12 @@
           <span id="activeCount">0 playing</span>
         </section>
 
+        <section class="master-volume" aria-label="全体音量">
+          <label for="masterVolumeInput">全体音量</label>
+          <input id="masterVolumeInput" type="range" min="0" max="100" value="100" />
+          <output id="masterVolumeOutput">100%</output>
+        </section>
+
         <section class="page-strip" aria-label="ページ切り替え">
           <span id="pageSummary">Page 1 / 5</span>
           <div class="page-tabs" id="pageTabs" role="tablist" aria-label="Padページ"></div>
@@ -168,9 +174,7 @@
       </article>
     </template>
 
-    <script src="./audio-prewarm.js" defer></script>
     <script src="./app.js" defer></script>
-    <script src="./fade-fix.js" defer></script>
     <script src="./upload-fix.js" defer></script>
     <script src="./auth.js" defer></script>
   </body>
