@@ -17,6 +17,7 @@ const DEFAULT_COLORS = [
   "#c7b56f",
   "#6bba89",
 ];
+const AUDIO_EXTENSIONS = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".mp4"];
 
 const padGrid = document.querySelector("#padGrid");
 const padTemplate = document.querySelector("#padTemplate");
@@ -28,6 +29,8 @@ const stopAllButton = document.querySelector("#stopAllButton");
 const pauseAllButton = document.querySelector("#pauseAllButton");
 const pauseAllText = document.querySelector("#pauseAllText");
 const fadeAllButton = document.querySelector("#fadeAllButton");
+const masterVolumeInput = document.querySelector("#masterVolumeInput");
+const masterVolumeOutput = document.querySelector("#masterVolumeOutput");
 const padDialog = document.querySelector("#padDialog");
 const padForm = document.querySelector("#padForm");
 const dialogTitle = document.querySelector("#dialogTitle");
@@ -47,7 +50,7 @@ const wakeToggle = document.querySelector("#wakeToggle");
 const resetButton = document.querySelector("#resetButton");
 
 let pads = [];
-let settings = { vibrate: true, keepAwake: false };
+let settings = { vibrate: true, keepAwake: false, masterVolume: 1 };
 let currentPage = 0;
 let editingPadId = null;
 let selectedColor = DEFAULT_COLORS[0];
@@ -57,6 +60,9 @@ const audioUrls = new Map();
 const activePlayers = new Map();
 const memoryBlobs = new Map();
 const fadeFrames = new WeakMap();
+const fadeTimers = new WeakMap();
+let audioContext = null;
+let masterGain = null;
 
 window.addEventListener("error", (event) => {
   setStatus(`エラー: ${event.message || "画面を再読み込みしてください"}`);
@@ -144,6 +150,7 @@ function loadState() {
   if (!Array.isArray(pads) || pads.length === 0) pads = createEmptyPads();
   pads = normalizePads(pads);
   currentPage = clampPage(currentPage);
+  settings.masterVolume = clampVolume(Number(settings.masterVolume ?? 1));
 }
 
 function saveState() {
@@ -205,6 +212,97 @@ function visiblePads() {
 function playersFor(padId) {
   if (!activePlayers.has(padId)) activePlayers.set(padId, new Set());
   return activePlayers.get(padId);
+}
+
+function clampVolume(volume) {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.min(Math.max(volume, 0), 1);
+}
+
+function getAudioContext() {
+  if (audioContext) return audioContext;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  try {
+    audioContext = new AudioContextClass();
+  } catch {
+    audioContext = null;
+  }
+  return audioContext;
+}
+
+async function resumeAudioContext() {
+  const context = getAudioContext();
+  if (context && context.state === "suspended" && typeof context.resume === "function") {
+    try {
+      await context.resume();
+    } catch {}
+  }
+  return context;
+}
+
+function getMasterGain() {
+  const context = getAudioContext();
+  if (!context) return null;
+  if (!masterGain) {
+    masterGain = context.createGain();
+    masterGain.gain.value = clampVolume(settings.masterVolume);
+    masterGain.connect(context.destination);
+  }
+  return masterGain;
+}
+
+function setMasterVolume(volume, options = {}) {
+  settings.masterVolume = clampVolume(volume);
+  if (masterVolumeInput) masterVolumeInput.value = Math.round(settings.masterVolume * 100);
+  if (masterVolumeOutput) masterVolumeOutput.value = `${Math.round(settings.masterVolume * 100)}%`;
+
+  if (masterGain) {
+    const now = masterGain.context.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setTargetAtTime(settings.masterVolume, now, 0.015);
+  }
+
+  if (options.save) saveState();
+}
+
+function connectAudioGain(audio, volume) {
+  if (audio._pondashiGain) return audio._pondashiGain;
+  const context = getAudioContext();
+  if (!context) return null;
+
+  try {
+    const output = getMasterGain() || context.destination;
+    const source = context.createMediaElementSource(audio);
+    const gain = context.createGain();
+    gain.gain.value = clampVolume(volume);
+    source.connect(gain);
+    gain.connect(output);
+    audio._pondashiSource = source;
+    audio._pondashiGain = gain;
+    audio.dataset.webAudioConnected = "true";
+    return gain;
+  } catch {
+    return null;
+  }
+}
+
+function setAudioGain(audio, volume) {
+  if (audio._pondashiGain) {
+    const gain = audio._pondashiGain.gain;
+    gain.cancelScheduledValues(gain.context.currentTime);
+    gain.setValueAtTime(clampVolume(volume), gain.context.currentTime);
+  }
+}
+
+function cancelFade(audio) {
+  const frame = fadeFrames.get(audio);
+  if (frame) cancelAnimationFrame(frame);
+  fadeFrames.delete(audio);
+
+  const timer = fadeTimers.get(audio);
+  if (timer) clearTimeout(timer);
+  fadeTimers.delete(audio);
 }
 
 async function urlForPad(pad) {
@@ -353,9 +451,11 @@ async function playPad(padId) {
   const audio = new Audio(url);
   audio.preload = "auto";
   audio.loop = pad.mode === "loop";
-  audio.volume = pad.volume;
+  audio.volume = 1;
   audio.dataset.baseVolume = String(pad.volume);
   audio.dataset.startedAt = String(performance.now());
+  const gain = connectAudioGain(audio, pad.volume);
+  if (!gain) audio.volume = pad.volume;
   playersFor(padId).add(audio);
   audio.addEventListener("ended", () => removePlayer(padId, audio));
   audio.addEventListener("pause", () => {
@@ -363,6 +463,7 @@ async function playPad(padId) {
   });
 
   try {
+    await resumeAudioContext();
     await audio.play();
     setStatus(`${pad.name} を再生`);
   } catch {
@@ -373,9 +474,7 @@ async function playPad(padId) {
 }
 
 function removePlayer(padId, audio) {
-  const frame = fadeFrames.get(audio);
-  if (frame) cancelAnimationFrame(frame);
-  fadeFrames.delete(audio);
+  cancelFade(audio);
   const players = playersFor(padId);
   players.delete(audio);
   updatePlaybackUi();
@@ -384,9 +483,8 @@ function removePlayer(padId, audio) {
 function stopPad(padId) {
   const players = playersFor(padId);
   players.forEach((audio) => {
-    const frame = fadeFrames.get(audio);
-    if (frame) cancelAnimationFrame(frame);
-    fadeFrames.delete(audio);
+    cancelFade(audio);
+    setAudioGain(audio, Number(audio.dataset.baseVolume || 1));
     audio.pause();
     audio.currentTime = 0;
   });
@@ -408,6 +506,7 @@ async function pauseAll() {
 
   const shouldResume = players.every((audio) => audio.paused);
   if (shouldResume) {
+    await resumeAudioContext();
     const results = await Promise.allSettled(players.map((audio) => audio.play()));
     const resumed = results.filter((result) => result.status === "fulfilled").length;
     setStatus(resumed ? "再開しました" : "再開できませんでした");
@@ -432,14 +531,33 @@ function fadeAll() {
 }
 
 function fadeOut(audio, done) {
-  const previousFrame = fadeFrames.get(audio);
-  if (previousFrame) cancelAnimationFrame(previousFrame);
+  cancelFade(audio);
+
+  const duration = 3000;
+  if (audio.paused) audio.play().catch(() => {});
+
+  if (audio._pondashiGain) {
+    resumeAudioContext();
+    const gain = audio._pondashiGain.gain;
+    const now = gain.context.currentTime;
+    const startVolume = Number.isFinite(gain.value) ? gain.value : Number(audio.dataset.baseVolume || 1);
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(clampVolume(startVolume), now);
+    gain.linearRampToValueAtTime(0, now + duration / 1000);
+
+    const timer = setTimeout(() => {
+      fadeTimers.delete(audio);
+      audio.pause();
+      audio.currentTime = 0;
+      setAudioGain(audio, Number(audio.dataset.baseVolume || startVolume || 1));
+      done();
+    }, duration + 80);
+    fadeTimers.set(audio, timer);
+    return;
+  }
 
   const startVolume = audio.volume;
   const startedAt = performance.now();
-  const duration = 1200;
-  if (audio.paused) audio.play().catch(() => {});
-
   const tick = (now) => {
     const progress = Math.min(1, (now - startedAt) / duration);
     const eased = 1 - Math.pow(progress, 2);
@@ -507,7 +625,7 @@ function on(element, eventName, handler) {
 }
 
 async function importFiles(files) {
-  const fileList = Array.prototype.slice.call(files).filter((file) => file.type && file.type.indexOf("audio/") === 0);
+  const fileList = Array.prototype.slice.call(files).filter(isAudioFile);
   if (!fileList.length) return;
 
   let addedCount = 0;
@@ -534,13 +652,22 @@ async function importFiles(files) {
   );
 }
 
+function isAudioFile(file) {
+  if (!file) return false;
+  if (file.type && file.type.indexOf("audio/") === 0) return true;
+  const name = file.name ? file.name.toLowerCase() : "";
+  return AUDIO_EXTENSIONS.some((extension) => name.endsWith(extension));
+}
+
 async function assignFile(pad, file, renamePad = false) {
+  if (!isAudioFile(file)) throw new Error("音声ファイルを選んでください");
   if (pad.blobKey) await deleteBlob(pad.blobKey);
   const blobKey = id();
   const blob = file.slice(0, file.size, file.type || "audio/mpeg");
   const stored = await putBlob(blobKey, blob);
   pad.blobKey = blobKey;
-  pad.dataUrl = stored ? "" : await fileToDataUrl(file);
+  pad.dataUrl = "";
+  if (!stored && file.size < 480000) pad.dataUrl = await fileToDataUrl(file);
   pad.fileName = file.name;
   if (renamePad || !pad.name || /^Pad \d+$/.test(pad.name)) {
     pad.name = file.name.replace(/\.[^.]+$/, "").slice(0, 24);
@@ -558,16 +685,26 @@ function fileToDataUrl(file) {
 
 async function savePadFromDialog() {
   const pad = padById(editingPadId);
-  if (!pad) return;
+  if (!pad) return false;
+  if (!pad.blobKey && !pendingFile) {
+    setStatus("音源ファイルを選んでから保存してください");
+    return false;
+  }
 
   pad.name = padNameInput.value.trim() || pad.name;
   pad.mode = padForm.elements.mode.value || "restart";
   pad.volume = Number(volumeInput.value) / 100;
   pad.color = selectedColor;
-  if (pendingFile) await assignFile(pad, pendingFile);
+  try {
+    if (pendingFile) await assignFile(pad, pendingFile);
+  } catch (error) {
+    setStatus(error && error.message ? error.message : "音源を保存できませんでした");
+    return false;
+  }
   saveState();
   renderPads();
   setStatus(`${pad.name} を保存しました`);
+  return true;
 }
 
 async function clearPad(padId) {
@@ -623,22 +760,32 @@ function bindEvents() {
   on(stopAllButton, "click", stopAll);
   on(pauseAllButton, "click", pauseAll);
   on(fadeAllButton, "click", fadeAll);
+  on(masterVolumeInput, "input", () => {
+    setMasterVolume(Number(masterVolumeInput.value) / 100, { save: true });
+  });
   on(volumeInput, "input", () => {
     volumeOutput.value = `${volumeInput.value}%`;
   });
   on(singleFileInput, "change", (event) => {
     pendingFile = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+    if (pendingFile && !isAudioFile(pendingFile)) {
+      setStatus("音声ファイルを選んでください");
+      pendingFile = null;
+      singleFileInput.value = "";
+      return;
+    }
     if (pendingFile && (!padNameInput.value || /^Pad \d+$/.test(padNameInput.value))) {
       padNameInput.value = pendingFile.name.replace(/\.[^.]+$/, "").slice(0, 24);
     }
+    if (pendingFile) setStatus(`${pendingFile.name} を選択しました。保存を押してください`);
   });
   document.querySelectorAll("input[name='mode']").forEach((input) => {
     input.addEventListener("change", syncModeLabels);
   });
   on(padForm, "submit", async (event) => {
     event.preventDefault();
-    await savePadFromDialog();
-    closeDialog(padDialog);
+    const saved = await savePadFromDialog();
+    if (saved) closeDialog(padDialog);
   });
   on(closePadButton, "click", () => closeDialog(padDialog));
   on(deletePadButton, "click", async () => {
@@ -666,6 +813,7 @@ async function boot() {
     bindEvents();
     if (vibrateToggle) vibrateToggle.checked = settings.vibrate;
     if (wakeToggle) wakeToggle.checked = settings.keepAwake;
+    setMasterVolume(settings.masterVolume);
     renderPads();
     animateMeters();
     updateWakeLock();
