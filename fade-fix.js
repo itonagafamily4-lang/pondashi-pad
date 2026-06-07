@@ -2,7 +2,7 @@
   var fadeButton = document.querySelector("#fadeAllButton");
   var fadeFrames = typeof WeakMap !== "undefined" ? new WeakMap() : null;
   var fadeTimers = typeof WeakMap !== "undefined" ? new WeakMap() : null;
-  var audioContext = null;
+  var fadeDuration = 3000;
 
   function getActivePlayers() {
     if (typeof activePlayers === "undefined" || !activePlayers || typeof activePlayers.forEach !== "function") {
@@ -15,45 +15,12 @@
     if (typeof setStatus === "function") setStatus(text);
   }
 
-  function getAudioContext() {
-    if (audioContext) return audioContext;
-    var AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return null;
-    try {
-      audioContext = new AudioContextClass();
-    } catch (error) {
-      audioContext = null;
-    }
-    return audioContext;
-  }
-
   function resumeAudioContext(context) {
     if (!context || context.state !== "suspended" || typeof context.resume !== "function") return;
     try {
       var result = context.resume();
       if (result && typeof result.catch === "function") result.catch(function () {});
     } catch (error) {}
-  }
-
-  function connectGain(audio, startVolume) {
-    if (audio._pondashiGain) return audio._pondashiGain;
-
-    var context = getAudioContext();
-    if (!context) return null;
-
-    try {
-      var source = context.createMediaElementSource(audio);
-      var gain = context.createGain();
-      gain.gain.value = startVolume;
-      source.connect(gain);
-      gain.connect(context.destination);
-      audio._pondashiSource = source;
-      audio._pondashiGain = gain;
-      audio.dataset.webAudioConnected = "true";
-      return gain;
-    } catch (error) {
-      return null;
-    }
   }
 
   function clearFadeJobs(audio) {
@@ -116,8 +83,8 @@
 
     var originalVolume = Number(audio.dataset.baseVolume || audio.volume);
     if (!isFinite(originalVolume) || originalVolume <= 0) originalVolume = 1;
-    var duration = 1200;
-    var gain = connectGain(audio, originalVolume);
+    var duration = fadeDuration;
+    var gain = audio._pondashiGain || null;
 
     if (audio.paused && !audio.ended) {
       try {
@@ -134,10 +101,9 @@
     resumeAudioContext(gain.context);
 
     try {
-      audio.volume = 1;
       var now = gain.context.currentTime;
       gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(gain.gain.value || originalVolume, now);
+      gain.gain.setValueAtTime(originalVolume, now);
       gain.gain.linearRampToValueAtTime(0, now + duration / 1000);
     } catch (error) {
       fadeWithElementVolume(padId, audio, originalVolume, duration);
