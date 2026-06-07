@@ -12,7 +12,21 @@
     <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
+  <body class="auth-locked">
+    <section class="auth-gate" id="authGate" aria-live="polite">
+      <form class="auth-card" id="authForm">
+        <p class="eyebrow">Access</p>
+        <h2>パスワード入力</h2>
+        <p class="auth-copy">購入時に案内されたパスワードを入力してください。</p>
+        <label class="field">
+          <span>パスワード</span>
+          <input id="authPasswordInput" type="password" autocomplete="current-password" inputmode="text" />
+        </label>
+        <button class="primary-button full" type="submit">アプリを開く</button>
+        <p class="auth-message" id="authMessage"></p>
+      </form>
+    </section>
+
     <div class="app-shell">
       <header class="topbar">
         <div>
@@ -135,6 +149,7 @@
         </label>
 
         <button class="danger-button full" id="resetButton" type="button">全パッドを削除</button>
+        <button class="danger-button full" id="logoutButton" type="button">この端末の認証を解除</button>
       </form>
     </dialog>
 
@@ -155,5 +170,6 @@
     <script src="./app.js" defer></script>
     <script src="./fade-fix.js" defer></script>
     <script src="./upload-fix.js" defer></script>
+    <script src="./auth.js" defer></script>
   </body>
 </html>
