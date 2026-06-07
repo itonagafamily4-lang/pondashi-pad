@@ -1,0 +1,52 @@
+body.auth-locked {
+  overflow: hidden;
+}
+
+body.auth-locked .app-shell {
+  visibility: hidden;
+}
+
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 28rem),
+    var(--bg);
+}
+
+body.auth-ok .auth-gate {
+  display: none;
+}
+
+.auth-card {
+  display: grid;
+  width: min(100%, 420px);
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #202024;
+  box-shadow: var(--shadow);
+}
+
+.auth-copy,
+.auth-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.auth-message {
+  min-height: 1.4em;
+  color: #ffd1cf;
+  font-weight: 800;
+}
+
+.primary-button.full {
+  width: 100%;
+}
