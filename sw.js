@@ -1,9 +1,10 @@
-const CACHE_NAME = "pondashi-pad-v17";
+const CACHE_NAME = "pondashi-pad-v18";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./auth.css",
+  "./ios-audio-fix.js",
   "./app.js",
   "./transport-fix.js",
   "./upload-fix.js",
