@@ -1,4 +1,4 @@
-const CACHE_NAME = "pondashi-pad-v19";
+const CACHE_NAME = "pondashi-pad-v20";
 const ASSETS = [
   "./",
   "./index.html",
