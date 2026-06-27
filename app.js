@@ -56,6 +56,7 @@ let editingPadId = null;
 let selectedColor = DEFAULT_COLORS[0];
 let pendingFile = null;
 let wakeLock = null;
+let lastTransportActionAt = 0;
 const audioUrls = new Map();
 const activePlayers = new Map();
 const memoryBlobs = new Map();
@@ -289,9 +290,11 @@ function connectAudioGain(audio, volume) {
 
 function setAudioGain(audio, volume) {
   if (audio._pondashiGain) {
-    const gain = audio._pondashiGain.gain;
-    gain.cancelScheduledValues(gain.context.currentTime);
-    gain.setValueAtTime(clampVolume(volume), gain.context.currentTime);
+    const gainNode = audio._pondashiGain;
+    const gain = gainNode.gain;
+    const now = gainNode.context.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(clampVolume(volume), now);
   }
 }
 
@@ -538,8 +541,9 @@ function fadeOut(audio, done) {
 
   if (audio._pondashiGain) {
     resumeAudioContext();
-    const gain = audio._pondashiGain.gain;
-    const now = gain.context.currentTime;
+    const gainNode = audio._pondashiGain;
+    const gain = gainNode.gain;
+    const now = gainNode.context.currentTime;
     const startVolume = Number.isFinite(gain.value) ? gain.value : Number(audio.dataset.baseVolume || 1);
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(clampVolume(startVolume), now);
@@ -760,6 +764,9 @@ function bindEvents() {
   on(stopAllButton, "click", stopAll);
   on(pauseAllButton, "click", pauseAll);
   on(fadeAllButton, "click", fadeAll);
+  on(document, "pointerup", handleTransportFallback);
+  on(document, "touchend", handleTransportFallback);
+  on(document, "click", handleTransportFallback);
   on(masterVolumeInput, "input", () => {
     setMasterVolume(Number(masterVolumeInput.value) / 100, { save: true });
   });
@@ -805,6 +812,26 @@ function bindEvents() {
   });
   on(resetButton, "click", resetAll);
   on(document, "visibilitychange", updateWakeLock);
+}
+
+function handleTransportFallback(event) {
+  const target = event.target && event.target.closest ? event.target.closest("#stopAllButton, #fadeAllButton") : null;
+  if (!target) return;
+
+  const now = performance.now();
+  if (now - lastTransportActionAt < 320) return;
+  lastTransportActionAt = now;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (target.id === "stopAllButton") {
+    stopAll();
+    return;
+  }
+  if (target.id === "fadeAllButton") {
+    fadeAll();
+  }
 }
 
 async function boot() {
