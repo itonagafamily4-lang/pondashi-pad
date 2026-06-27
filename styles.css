@@ -20,6 +20,7 @@
 
 html,
 body {
+  height: 100%;
   min-height: 100%;
 }
 
@@ -29,6 +30,7 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 34rem),
     var(--bg);
   color: var(--text);
+  overflow: hidden;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -61,9 +63,20 @@ svg {
 
 .app-shell {
   width: min(100%, 820px);
-  min-height: 100dvh;
+  height: 100dvh;
+  min-height: 0;
   margin: 0 auto;
-  padding: max(16px, env(safe-area-inset-top)) 16px max(22px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+}
+
+main {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
 }
 
 .auth-gate {
@@ -122,8 +135,8 @@ body.auth-ok .auth-gate {
 
 .topbar {
   justify-content: space-between;
-  gap: 16px;
-  padding: 4px 0 16px;
+  gap: 10px;
+  padding: 0 0 8px;
 }
 
 .eyebrow {
@@ -142,8 +155,8 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(1.8rem, 9vw, 3.1rem);
-  line-height: 0.94;
+  font-size: clamp(1.55rem, 7.2vw, 2.45rem);
+  line-height: 0.92;
 }
 
 h2 {
@@ -154,8 +167,8 @@ h2 {
 .pad-menu {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -175,18 +188,17 @@ h2 {
 }
 
 .transport {
-  position: sticky;
-  top: 0;
   z-index: 2;
-  gap: 8px;
-  padding: 8px 0 12px;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 4px 0 7px;
   background: linear-gradient(180deg, var(--bg) 78%, rgba(23, 23, 23, 0));
 }
 
 .transport-button,
 .primary-button,
 .danger-button {
-  min-height: 48px;
+  min-height: 42px;
   border: 0;
   border-radius: 8px;
   font-weight: 800;
@@ -197,9 +209,9 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   flex: 1 1 0;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--text);
@@ -207,8 +219,8 @@ h2 {
 }
 
 .transport-button svg {
-  width: 19px;
-  height: 19px;
+  width: 17px;
+  height: 17px;
 }
 
 .transport-button.stop {
@@ -228,11 +240,12 @@ h2 {
 
 .status-strip {
   justify-content: space-between;
-  gap: 12px;
-  min-height: 40px;
-  padding: 0 4px 12px;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 2px 6px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.72rem;
 }
 
 .status-strip span:last-child {
@@ -242,16 +255,17 @@ h2 {
 }
 
 .master-volume {
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 4px 14px;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 2px 8px;
 }
 
 .master-volume label,
 .master-volume output {
   flex: 0 0 auto;
   color: #d9d2c7;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
@@ -264,14 +278,15 @@ h2 {
 
 .page-strip {
   justify-content: space-between;
-  gap: 12px;
-  padding: 0 0 12px;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 0 0 8px;
 }
 
 .page-strip > span {
   flex: 0 0 auto;
   color: #d9d2c7;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -279,14 +294,14 @@ h2 {
 .page-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
-  width: min(100%, 280px);
+  gap: 5px;
+  width: min(100%, 250px);
 }
 
 .page-tab {
   display: grid;
   min-width: 0;
-  min-height: 40px;
+  min-height: 34px;
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -305,17 +320,20 @@ h2 {
 
 .pad-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .pad {
   position: relative;
   min-width: 0;
-  aspect-ratio: 1.12 / 1;
+  min-height: 0;
   border-radius: 8px;
   background: var(--pad-color, #4fb69f);
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   overflow: hidden;
 }
 
@@ -353,7 +371,7 @@ h2 {
   justify-content: flex-end;
   width: 100%;
   min-width: 0;
-  padding: 14px;
+  padding: 8px;
   border: 0;
   background: transparent;
   text-align: left;
@@ -362,10 +380,10 @@ h2 {
 
 .pad-number {
   position: absolute;
-  top: 12px;
-  left: 14px;
+  top: 8px;
+  left: 9px;
   color: rgba(255, 255, 255, 0.76);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 900;
 }
 
@@ -373,7 +391,7 @@ h2 {
   display: -webkit-box;
   overflow: hidden;
   color: #fff;
-  font-size: clamp(1.05rem, 5vw, 1.38rem);
+  font-size: clamp(0.86rem, 3.4vw, 1.16rem);
   font-weight: 900;
   line-height: 1.06;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.24);
@@ -383,22 +401,27 @@ h2 {
 
 .pad-file {
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: 4px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pad-menu {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 7px;
+  right: 7px;
   z-index: 2;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(0, 0, 0, 0.28);
+}
+
+.pad-menu svg {
+  width: 18px;
+  height: 18px;
 }
 
 .meter {
@@ -624,5 +647,112 @@ h2 {
   .segmented label + label {
     border-top: 1px solid var(--line);
     border-left: 0;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .app-shell {
+    width: min(100%, 960px);
+    padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+      max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+
+  .topbar {
+    padding-bottom: 4px;
+  }
+
+  .eyebrow {
+    display: none;
+  }
+
+  h1 {
+    font-size: clamp(1.2rem, 4vw, 1.7rem);
+    line-height: 1;
+  }
+
+  .icon-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .icon-button svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .transport {
+    padding: 2px 0 5px;
+  }
+
+  .transport-button {
+    min-height: 34px;
+    font-size: 0.8rem;
+  }
+
+  .status-strip {
+    min-height: 18px;
+    padding-bottom: 3px;
+    font-size: 0.66rem;
+  }
+
+  .master-volume {
+    min-height: 26px;
+    padding-bottom: 5px;
+  }
+
+  .master-volume label,
+  .master-volume output,
+  .page-strip > span {
+    font-size: 0.68rem;
+  }
+
+  .page-strip {
+    padding-bottom: 5px;
+  }
+
+  .page-tabs {
+    width: min(100%, 220px);
+  }
+
+  .page-tab {
+    min-height: 28px;
+    font-size: 0.78rem;
+  }
+
+  .pad-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .pad-trigger {
+    padding: 7px;
+  }
+
+  .pad-number {
+    top: 6px;
+    left: 8px;
+    font-size: 0.62rem;
+  }
+
+  .pad-name {
+    font-size: clamp(0.72rem, 2vw, 0.95rem);
+    -webkit-line-clamp: 1;
+  }
+
+  .pad-file {
+    display: none;
+  }
+
+  .pad-menu {
+    top: 5px;
+    right: 5px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .pad-menu svg {
+    width: 16px;
+    height: 16px;
   }
 }
