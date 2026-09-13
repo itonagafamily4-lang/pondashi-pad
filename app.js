@@ -56,6 +56,8 @@ let editingPadId = null;
 let selectedColor = DEFAULT_COLORS[0];
 let pendingFile = null;
 let wakeLock = null;
+let wakeLockRequestPending = false;
+let wakeLockUnsupportedNotified = false;
 let lastTransportActionAt = 0;
 const audioUrls = new Map();
 const activePlayers = new Map();
@@ -473,14 +475,14 @@ async function playPad(padId) {
     removePlayer(padId, audio);
     setStatus("再生できませんでした。画面を一度タップしてから試してください");
   }
-  updatePlaybackUi();
+  updateAfterPlaybackChange();
 }
 
 function removePlayer(padId, audio) {
   cancelFade(audio);
   const players = playersFor(padId);
   players.delete(audio);
-  updatePlaybackUi();
+  updateAfterPlaybackChange();
 }
 
 function stopPad(padId) {
@@ -492,7 +494,7 @@ function stopPad(padId) {
     audio.currentTime = 0;
   });
   players.clear();
-  updatePlaybackUi();
+  updateAfterPlaybackChange();
 }
 
 function stopAll() {
@@ -517,7 +519,7 @@ async function pauseAll() {
     players.forEach((audio) => audio.pause());
     setStatus("一時停止しました");
   }
-  updatePlaybackUi();
+  updateAfterPlaybackChange();
 }
 
 function fadeAll() {
@@ -551,11 +553,14 @@ function fadeOut(audio, done) {
 
     const timer = setTimeout(() => {
       fadeTimers.delete(audio);
+      const stopAt = gainNode.context.currentTime;
+      gain.cancelScheduledValues(stopAt);
+      gain.setValueAtTime(0, stopAt);
+      audio.volume = 0;
       audio.pause();
       audio.currentTime = 0;
-      setAudioGain(audio, Number(audio.dataset.baseVolume || startVolume || 1));
       done();
-    }, duration + 80);
+    }, duration + 160);
     fadeTimers.set(audio, timer);
     return;
   }
@@ -571,9 +576,9 @@ function fadeOut(audio, done) {
       return;
     }
     fadeFrames.delete(audio);
+    audio.volume = 0;
     audio.pause();
     audio.currentTime = 0;
-    audio.volume = Number(audio.dataset.baseVolume || startVolume || 1);
     done();
   };
   fadeFrames.set(audio, requestAnimationFrame(tick));
@@ -613,6 +618,20 @@ function updatePlaybackUi() {
     const players = allPlayers();
     pauseAllText.textContent = players.length && players.every((audio) => audio.paused) ? "再開" : "一時停止";
   }
+}
+
+function hasActivePlayback() {
+  return allPlayers().some((audio) => !audio.paused);
+}
+
+function shouldHoldWakeLock() {
+  const isVisible = document.visibilityState !== "hidden";
+  return isVisible && (settings.keepAwake || hasActivePlayback());
+}
+
+function updateAfterPlaybackChange() {
+  updatePlaybackUi();
+  updateWakeLock();
 }
 
 function animateMeters() {
@@ -740,22 +759,46 @@ async function resetAll() {
   setStatus("全パッドを削除しました");
 }
 
-async function updateWakeLock() {
-  if (!("wakeLock" in navigator)) return;
-  if (settings.keepAwake && !wakeLock) {
+async function updateWakeLock(options = {}) {
+  const manual = Boolean(options.manual);
+  const shouldHold = shouldHoldWakeLock();
+
+  if (!("wakeLock" in navigator)) {
+    if ((manual || shouldHold) && !wakeLockUnsupportedNotified) {
+      wakeLockUnsupportedNotified = true;
+      setStatus("この環境では画面維持が使えません。iPhoneの自動ロックを一時的に長めにしてください");
+    }
+    return;
+  }
+
+  if (wakeLockRequestPending) return;
+
+  if (shouldHold && !wakeLock) {
     try {
+      wakeLockRequestPending = true;
       wakeLock = await navigator.wakeLock.request("screen");
       wakeLock.addEventListener("release", () => {
         wakeLock = null;
+        if (shouldHoldWakeLock()) {
+          window.setTimeout(() => updateWakeLock(), 250);
+        }
       });
     } catch {
-      settings.keepAwake = false;
-      wakeToggle.checked = false;
-      saveState();
-      setStatus("画面維持はこの環境では使えません");
+      if (manual) {
+        settings.keepAwake = false;
+        if (wakeToggle) wakeToggle.checked = false;
+        saveState();
+      }
+      if (manual || hasActivePlayback()) {
+        setStatus("画面維持はこの環境では使えません。iPhoneの自動ロックを一時的に長めにしてください");
+      }
+    } finally {
+      wakeLockRequestPending = false;
     }
-  } else if (!settings.keepAwake && wakeLock) {
-    await wakeLock.release();
+  } else if (!shouldHold && wakeLock) {
+    try {
+      await wakeLock.release();
+    } catch {}
     wakeLock = null;
   }
 }
@@ -808,7 +851,7 @@ function bindEvents() {
   on(wakeToggle, "change", async () => {
     settings.keepAwake = wakeToggle.checked;
     saveState();
-    await updateWakeLock();
+    await updateWakeLock({ manual: true });
   });
   on(resetButton, "click", resetAll);
   on(document, "visibilitychange", updateWakeLock);
