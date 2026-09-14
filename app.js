@@ -47,10 +47,11 @@ const settingsDialog = document.querySelector("#settingsDialog");
 const closeSettingsButton = document.querySelector("#closeSettingsButton");
 const vibrateToggle = document.querySelector("#vibrateToggle");
 const wakeToggle = document.querySelector("#wakeToggle");
+const backgroundToggle = document.querySelector("#backgroundToggle");
 const resetButton = document.querySelector("#resetButton");
 
 let pads = [];
-let settings = { vibrate: true, keepAwake: false, masterVolume: 1 };
+let settings = { vibrate: true, keepAwake: false, backgroundPlayback: true, masterVolume: 1 };
 let currentPage = 0;
 let editingPadId = null;
 let selectedColor = DEFAULT_COLORS[0];
@@ -266,10 +267,26 @@ function setMasterVolume(volume, options = {}) {
     masterGain.gain.setTargetAtTime(settings.masterVolume, now, 0.015);
   }
 
+  applyElementVolumes();
+
   if (options.save) saveState();
 }
 
+function effectiveElementVolume(audio) {
+  const baseVolume = Number(audio.dataset.baseVolume || 1);
+  return clampVolume(baseVolume) * clampVolume(settings.masterVolume);
+}
+
+function applyElementVolumes() {
+  allPlayers()
+    .filter((audio) => !audio._pondashiGain)
+    .forEach((audio) => {
+      audio.volume = effectiveElementVolume(audio);
+    });
+}
+
 function connectAudioGain(audio, volume) {
+  if (settings.backgroundPlayback) return null;
   if (audio._pondashiGain) return audio._pondashiGain;
   const context = getAudioContext();
   if (!context) return null;
@@ -456,11 +473,15 @@ async function playPad(padId) {
   const audio = new Audio(url);
   audio.preload = "auto";
   audio.loop = pad.mode === "loop";
+  audio.playsInline = true;
+  audio.setAttribute("playsinline", "");
+  audio.setAttribute("webkit-playsinline", "");
   audio.volume = 1;
   audio.dataset.baseVolume = String(pad.volume);
   audio.dataset.startedAt = String(performance.now());
   const gain = connectAudioGain(audio, pad.volume);
-  if (!gain) audio.volume = pad.volume;
+  if (!gain) audio.volume = effectiveElementVolume(audio);
+  setupMediaSession(pad);
   playersFor(padId).add(audio);
   audio.addEventListener("ended", () => removePlayer(padId, audio));
   audio.addEventListener("pause", () => {
@@ -511,15 +532,25 @@ async function pauseAll() {
 
   const shouldResume = players.every((audio) => audio.paused);
   if (shouldResume) {
-    await resumeAudioContext();
-    const results = await Promise.allSettled(players.map((audio) => audio.play()));
-    const resumed = results.filter((result) => result.status === "fulfilled").length;
-    setStatus(resumed ? "再開しました" : "再開できませんでした");
+    await resumeAllPlayers(players);
   } else {
-    players.forEach((audio) => audio.pause());
-    setStatus("一時停止しました");
+    pausePlayersOnly(players);
   }
   updateAfterPlaybackChange();
+}
+
+function pausePlayersOnly(players = allPlayers()) {
+  players.forEach((audio) => audio.pause());
+  setStatus("一時停止しました");
+}
+
+async function resumeAllPlayers(players = allPlayers()) {
+  if (!players.length) return 0;
+  await resumeAudioContext();
+  const results = await Promise.allSettled(players.map((audio) => audio.play()));
+  const resumed = results.filter((result) => result.status === "fulfilled").length;
+  setStatus(resumed ? "再開しました" : "再開できませんでした");
+  return resumed;
 }
 
 function fadeAll() {
@@ -592,6 +623,25 @@ function allPlayers() {
   return list;
 }
 
+function setupMediaSession(pad) {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    if ("MediaMetadata" in window) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: pad.name || "ポン出しPad",
+        artist: "ポン出しPad",
+      });
+    }
+    navigator.mediaSession.playbackState = "playing";
+    navigator.mediaSession.setActionHandler("pause", () => {
+      pausePlayersOnly();
+      updateAfterPlaybackChange();
+    });
+    navigator.mediaSession.setActionHandler("play", () => resumeAllPlayers().then(() => updateAfterPlaybackChange()));
+    navigator.mediaSession.setActionHandler("stop", () => stopAll());
+  } catch {}
+}
+
 function updatePlaybackUi() {
   let playingCount = 0;
   let pausedCount = 0;
@@ -617,6 +667,11 @@ function updatePlaybackUi() {
   if (pauseAllText) {
     const players = allPlayers();
     pauseAllText.textContent = players.length && players.every((audio) => audio.paused) ? "再開" : "一時停止";
+  }
+  if ("mediaSession" in navigator) {
+    try {
+      navigator.mediaSession.playbackState = playingCount ? "playing" : pausedCount ? "paused" : "none";
+    } catch {}
   }
 }
 
@@ -853,6 +908,16 @@ function bindEvents() {
     saveState();
     await updateWakeLock({ manual: true });
   });
+  on(backgroundToggle, "change", () => {
+    settings.backgroundPlayback = backgroundToggle.checked;
+    saveState();
+    applyElementVolumes();
+    setStatus(
+      settings.backgroundPlayback
+        ? "次の再生からバックグラウンド優先で鳴らします"
+        : "次の再生から通常モードで鳴らします",
+    );
+  });
   on(resetButton, "click", resetAll);
   on(document, "visibilitychange", updateWakeLock);
 }
@@ -883,6 +948,7 @@ async function boot() {
     bindEvents();
     if (vibrateToggle) vibrateToggle.checked = settings.vibrate;
     if (wakeToggle) wakeToggle.checked = settings.keepAwake;
+    if (backgroundToggle) backgroundToggle.checked = settings.backgroundPlayback;
     setMasterVolume(settings.masterVolume);
     renderPads();
     animateMeters();
