@@ -216,11 +216,25 @@ h2 {
   background: var(--panel);
   color: var(--text);
   white-space: nowrap;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    filter 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .transport-button svg {
   width: 17px;
   height: 17px;
+}
+
+.transport-button:active {
+  transform: translateY(1px) scale(0.98);
+  border-color: rgba(255, 255, 255, 0.46);
+  filter: brightness(1.22);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.16),
+    0 0 0 3px rgba(79, 182, 159, 0.18);
 }
 
 .transport-button.stop {
@@ -335,6 +349,10 @@ h2 {
   background: var(--pad-color, #4fb69f);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   overflow: hidden;
+  transition:
+    transform 130ms ease,
+    box-shadow 130ms ease,
+    outline-color 130ms ease;
 }
 
 .pad::after {
@@ -355,6 +373,11 @@ h2 {
 .pad.is-playing {
   outline: 3px solid rgba(255, 255, 255, 0.82);
   outline-offset: -3px;
+  box-shadow:
+    0 0 0 2px rgba(79, 182, 159, 0.5),
+    0 12px 28px rgba(79, 182, 159, 0.28),
+    0 8px 24px rgba(0, 0, 0, 0.22);
+  animation: pad-playing-pulse 1.25s ease-in-out infinite;
 }
 
 .pad.is-paused {
@@ -376,6 +399,24 @@ h2 {
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+.pad-trigger:active {
+  transform: scale(0.985);
+}
+
+.pad.is-playing .pad-trigger::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 47px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 4px rgba(255, 255, 255, 0.18),
+    0 0 18px rgba(255, 255, 255, 0.72);
 }
 
 .pad-number {
@@ -433,6 +474,23 @@ h2 {
   transform: scaleX(var(--progress, 0));
   transform-origin: left;
   background: rgba(255, 255, 255, 0.9);
+}
+
+.pad.is-playing .meter {
+  height: 6px;
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.65);
+}
+
+@keyframes pad-playing-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+
+  50% {
+    filter: brightness(1.12);
+  }
 }
 
 .sheet {
